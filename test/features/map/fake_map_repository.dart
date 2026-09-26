@@ -28,9 +28,7 @@ class FakeMapRepository extends Fake implements MapRepository {
   FakeMapRepository({this.pins = const <Pin>[]});
 
   List<Pin> pins;
-  Map<int, List<Pin>> pinsByRadius = <int, List<Pin>>{};
   Completer<void>? gate;
-  Map<int, Completer<void>> gateByRadius = <int, Completer<void>>{};
   Map<LatLng, Completer<void>> gateByCenter = <LatLng, Completer<void>>{};
   Object? error;
   final List<int> radii = <int>[];
@@ -56,12 +54,11 @@ class FakeMapRepository extends Fake implements MapRepository {
     }
     try {
       await gate?.future;
-      await gateByRadius[radiusMeters]?.future;
       await gateByCenter[center]?.future;
       if (error != null) {
         throw error!;
       }
-      return pinsByRadius[radiusMeters] ?? pins;
+      return pins;
     } finally {
       running--;
     }

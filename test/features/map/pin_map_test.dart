@@ -13,15 +13,12 @@ bool refit(
   LatLng? oldCenter,
   bool oldFromDevice,
   LatLng? center,
-  bool fromDevice, {
-  int fitRadius = 2000,
-}) => cameraShouldRefit(
+  bool fromDevice,
+) => cameraShouldRefit(
   oldCenter: oldCenter,
   oldFromDevice: oldFromDevice,
-  oldFitRadius: 2000,
   center: center,
   fromDevice: fromDevice,
-  fitRadius: fitRadius,
 );
 
 void main() {
@@ -48,16 +45,11 @@ void main() {
       expect(refit(a, true, b, false), isTrue);
     });
 
-    test('a new query radius does, even from the device', () {
-      expect(refit(a, true, a, true, fitRadius: 3000), isTrue);
-      expect(refit(a, true, b, true, fitRadius: 3000), isTrue);
-    });
-
     test('nothing changed, or no centre: no refit', () {
       expect(refit(a, false, a, false), isFalse);
       expect(refit(a, true, a, true), isFalse);
       expect(refit(a, true, null, false), isFalse);
-      expect(refit(null, false, null, false, fitRadius: 3000), isFalse);
+      expect(refit(null, false, null, false), isFalse);
     });
   });
 

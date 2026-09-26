@@ -49,111 +49,15 @@ Future<List<Pin>?> settled(ProviderContainer container) async {
 }
 
 void main() {
-  group('snapSearchRadius', () {
-    test('rounds to the nearest 500 m', () {
-      expect(snapSearchRadius(2200), 2000);
-      expect(snapSearchRadius(2300), 2500);
-      expect(snapSearchRadius(3749.9), 3500);
-      expect(snapSearchRadius(3750), 4000);
-    });
-
-    test('keeps the value within 1000..5000', () {
-      expect(snapSearchRadius(0), 1000);
-      expect(snapSearchRadius(-300), 1000);
-      expect(snapSearchRadius(700), 1000);
-      expect(snapSearchRadius(5200), 5000);
-      expect(snapSearchRadius(100000), 5000);
-    });
-  });
-
-  group('searchRadiusProvider', () {
-    test('starts at 2 km', () {
-      final ProviderContainer container = ProviderContainer.test();
-
-      expect(container.read(searchRadiusProvider), 2000);
-      expect(defaultSearchRadiusMeters, 2000);
-    });
-
-    test('set snaps and clamps', () {
-      final ProviderContainer container = ProviderContainer.test();
-      final SearchRadiusNotifier radius = container.read(
-        searchRadiusProvider.notifier,
-      );
-
-      radius.set(3400);
-      expect(container.read(searchRadiusProvider), 3500);
-      radius.set(9000);
-      expect(container.read(searchRadiusProvider), 5000);
-      radius.set(100);
-      expect(container.read(searchRadiusProvider), 1000);
-    });
-  });
-
-  group('shownRadiusProvider', () {
-    test('follows the preview while dragging, then the chosen radius', () {
-      final ProviderContainer container = ProviderContainer.test();
-
-      expect(container.read(shownRadiusProvider), 2000);
-      container.read(radiusPreviewProvider.notifier).show(4100);
-      expect(container.read(shownRadiusProvider), 4000);
-      expect(container.read(searchRadiusProvider), 2000);
-
-      container.read(radiusPreviewProvider.notifier).clear();
-      expect(container.read(shownRadiusProvider), 2000);
-    });
-  });
-
   group('nearbyPinsProvider', () {
-    test('queries with the chosen radius, and again when it changes', () async {
-      final FakeMapRepository repository = FakeMapRepository()
-        ..pinsByRadius = <int, List<Pin>>{
-          2000: <Pin>[near],
-          5000: <Pin>[near, far],
-        };
+    test('always queries with the fixed 2 km radius', () async {
+      final FakeMapRepository repository = FakeMapRepository(pins: <Pin>[near]);
       final ProviderContainer container = signedIn(repository);
       container.listen(nearbyPinsProvider, (_, _) {});
 
       expect(await settled(container), <Pin>[near]);
-
-      container.read(searchRadiusProvider.notifier).set(5000);
-      expect(await settled(container), <Pin>[near, far]);
-      expect(repository.radii, <int>[2000, 5000]);
-    });
-
-    test('a preview alone never queries', () async {
-      final FakeMapRepository repository = FakeMapRepository();
-      final ProviderContainer container = signedIn(repository);
-      container.listen(nearbyPinsProvider, (_, _) {});
-      await settled(container);
-
-      container.read(radiusPreviewProvider.notifier)
-        ..show(3000)
-        ..show(4500)
-        ..clear();
-      await settled(container);
-
+      expect(defaultSearchRadiusMeters, 2000);
       expect(repository.radii, <int>[2000]);
-    });
-
-    test('the newest radius wins over a slower older request', () async {
-      final Completer<void> slow = Completer<void>();
-      final FakeMapRepository repository = FakeMapRepository()
-        ..pinsByRadius = <int, List<Pin>>{
-          2000: <Pin>[near],
-          4000: <Pin>[near, far],
-        }
-        ..gateByRadius = <int, Completer<void>>{2000: slow};
-      final ProviderContainer container = signedIn(repository);
-      container.listen(nearbyPinsProvider, (_, _) {});
-
-      container.read(searchRadiusProvider.notifier).set(4000);
-      expect(await settled(container), <Pin>[near, far]);
-
-      slow.complete();
-      await Future<void>.delayed(Duration.zero);
-
-      expect(repository.radii, <int>[2000, 4000]);
-      expect(container.read(nearbyPinsProvider).pins, <Pin>[near, far]);
     });
   });
 
@@ -250,33 +154,6 @@ void main() {
 
       expect(stateOf(container).pins, isEmpty);
       expect(timers.pending, isEmpty);
-    });
-
-    test('a radius release queries at once, even while a poll runs; the '
-        'older answer is ignored', () async {
-      final Completer<void> slow = Completer<void>();
-      final FakeMapRepository repository = FakeMapRepository()
-        ..pinsByRadius = <int, List<Pin>>{
-          2000: <Pin>[near],
-          4000: <Pin>[near, far],
-        };
-      final ProviderContainer container = polling(repository);
-      await settled(container);
-
-      repository.gateByRadius = <int, Completer<void>>{2000: slow};
-      timers.fire();
-      await pumpEventQueue();
-      expect(repository.running, 1);
-
-      container.read(searchRadiusProvider.notifier).set(4000);
-      expect(await settled(container), <Pin>[near, far]);
-      expect(repository.radii, <int>[2000, 2000, 4000]);
-      expect(timers.pending, hasLength(1));
-
-      slow.complete();
-      await settled(container);
-      expect(stateOf(container).pins, <Pin>[near, far]);
-      expect(timers.pending, hasLength(1), reason: 'no second timer');
     });
 
     test('a tapped centre queries at once, even while a query runs; the '

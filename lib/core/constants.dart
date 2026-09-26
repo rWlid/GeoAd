@@ -1,11 +1,5 @@
 library;
 
-const int minSearchRadiusMeters = 1000;
-
-const int maxSearchRadiusMeters = 5000;
-
-const int searchRadiusStepMeters = 500;
-
 const int defaultSearchRadiusMeters = 2000;
 
 const Duration mapPollInterval = Duration(seconds: 12);

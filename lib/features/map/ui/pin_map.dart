@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../core/constants.dart';
 import '../../../core/theme.dart';
 import '../data/pin.dart';
 import '../providers/map_providers.dart';
@@ -11,8 +12,6 @@ import 'marker_icons.dart';
 typedef PinMapBuilder = Widget Function({
   required LatLng? center,
   required bool centerFromDevice,
-  required int radiusMeters,
-  required int fitRadiusMeters,
   required List<Pin> pins,
   required ValueChanged<LatLng> onMapTap,
   required double topPadding,
@@ -21,16 +20,11 @@ typedef PinMapBuilder = Widget Function({
 bool cameraShouldRefit({
   required LatLng? oldCenter,
   required bool oldFromDevice,
-  required int oldFitRadius,
   required LatLng? center,
   required bool fromDevice,
-  required int fitRadius,
 }) {
   if (center == null) {
     return false;
-  }
-  if (fitRadius != oldFitRadius) {
-    return true;
   }
   return center != oldCenter && !(fromDevice && oldFromDevice);
 }
@@ -68,8 +62,6 @@ class PinMap extends ConsumerStatefulWidget {
     super.key,
     required this.center,
     required this.centerFromDevice,
-    required this.radiusMeters,
-    required this.fitRadiusMeters,
     required this.pins,
     required this.onMapTap,
     required this.topPadding,
@@ -77,8 +69,6 @@ class PinMap extends ConsumerStatefulWidget {
 
   final LatLng? center;
   final bool centerFromDevice;
-  final int radiusMeters;
-  final int fitRadiusMeters;
   final List<Pin> pins;
   final ValueChanged<LatLng> onMapTap;
   final double topPadding;
@@ -112,7 +102,7 @@ class _PinMapState extends ConsumerState<PinMap> {
   }
 
   CameraUpdate _fitCircle(LatLng center) => CameraUpdate.newLatLngBounds(
-    circleBounds(center, widget.fitRadiusMeters.toDouble()),
+    circleBounds(center, defaultSearchRadiusMeters.toDouble()),
     AppSpacing.md,
   );
 
@@ -124,10 +114,8 @@ class _PinMapState extends ConsumerState<PinMap> {
         cameraShouldRefit(
           oldCenter: oldWidget.center,
           oldFromDevice: oldWidget.centerFromDevice,
-          oldFitRadius: oldWidget.fitRadiusMeters,
           center: center,
           fromDevice: widget.centerFromDevice,
-          fitRadius: widget.fitRadiusMeters,
         )) {
       _controller?.animateCamera(_fitCircle(center));
     } else if (center != null &&
@@ -171,7 +159,7 @@ class _PinMapState extends ConsumerState<PinMap> {
           Circle(
             circleId: const CircleId('search-radius'),
             center: center,
-            radius: widget.radiusMeters.toDouble(),
+            radius: defaultSearchRadiusMeters.toDouble(),
             fillColor: colors.primary.withValues(alpha: 0.08),
             strokeColor: colors.primary,
             strokeWidth: 2,

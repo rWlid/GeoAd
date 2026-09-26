@@ -15,7 +15,6 @@ import 'package:geo_ad/features/map/data/pin.dart';
 import 'package:geo_ad/features/map/providers/buyer_location_providers.dart';
 import 'package:geo_ad/features/map/providers/map_providers.dart';
 import 'package:geo_ad/features/map/ui/map_screen.dart';
-import 'package:geo_ad/features/map/ui/radius_sheet.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -37,12 +36,9 @@ Finder pinMarker(Pin pin) => find.byKey(ValueKey<String>('pin:${pin.key}'));
 final Finder mapSurface = find.byKey(const ValueKey<String>('map-surface'));
 final Finder retry = find.widgetWithText(FilledButton, AppStrings.retry);
 final Finder radiusButton = find.byTooltip(AppStrings.searchRadius);
-final Finder slider = find.byType(Slider);
 
 LatLng? shownCenter;
 bool? shownFromDevice;
-int? shownRadius;
-int? shownFitRadius;
 List<Pin> shownPins = const <Pin>[];
 
 List<double> shownTopPaddings = <double>[];
@@ -54,8 +50,6 @@ final ValueNotifier<bool> tabShown = ValueNotifier<bool>(true);
 Widget fakeMap({
   required LatLng? center,
   required bool centerFromDevice,
-  required int radiusMeters,
-  required int fitRadiusMeters,
   required List<Pin> pins,
   required ValueChanged<LatLng> onMapTap,
   required double topPadding,
@@ -63,8 +57,6 @@ Widget fakeMap({
   shownTopPaddings.add(topPadding);
   shownCenter = center;
   shownFromDevice = centerFromDevice;
-  shownRadius = radiusMeters;
-  shownFitRadius = fitRadiusMeters;
   shownPins = pins;
   return GestureDetector(
     key: const ValueKey<String>('map-surface'),
@@ -88,8 +80,6 @@ void main() {
     shownCenter = null;
     shownFromDevice = null;
     nextTap = const LatLng(24.70, 46.60);
-    shownRadius = null;
-    shownFitRadius = null;
     shownPins = const <Pin>[];
     shownTopPaddings = <double>[];
     tabShown.value = true;
@@ -238,9 +228,8 @@ void main() {
   });
 
   group('radius (D-32)', () {
-    testWidgets('starts at 2 km: button, circle, camera and query', (
-      WidgetTester tester,
-    ) async {
+    testWidgets('fixed at 2 km: the button shows it, the query uses it, and '
+        'tapping it opens nothing', (WidgetTester tester) async {
       final FakeMapRepository repository = FakeMapRepository(pins: <Pin>[ad1]);
       await pumpMap(tester, repository);
       await tester.pumpAndSettle();
@@ -249,70 +238,24 @@ void main() {
         find.descendant(of: radiusButton, matching: find.text('2 كم')),
         findsOneWidget,
       );
-      expect(shownRadius, 2000);
-      expect(shownFitRadius, 2000);
+      expect(
+        tester
+            .widget<FloatingActionButton>(find.byType(FloatingActionButton))
+            .onPressed,
+        isNotNull,
+      );
       expect(repository.radii, <int>[2000]);
-    });
-
-    testWidgets('dragging moves only the circle; release queries once and '
-        'refits the camera', (WidgetTester tester) async {
-      final FakeMapRepository repository = FakeMapRepository(pins: <Pin>[ad1]);
-      await pumpMap(tester, repository);
-      await tester.pumpAndSettle();
 
       await tester.tap(radiusButton);
       await tester.pumpAndSettle();
-      expect(find.byType(RadiusSheet), findsOneWidget);
 
-      final TestGesture drag = await tester.startGesture(
-        tester.getCenter(slider),
-      );
-      await drag.moveTo(tester.getRect(slider).centerLeft);
-      await tester.pump();
-
-      expect(shownRadius, 5000, reason: 'the circle follows the drag');
-      expect(shownFitRadius, 2000, reason: 'the camera waits for release');
-      expect(repository.radii, <int>[2000], reason: 'no query while dragging');
-
-      await drag.up();
-      await tester.pumpAndSettle();
-
-      expect(repository.radii, <int>[2000, 5000]);
-      expect(shownRadius, 5000);
-      expect(shownFitRadius, 5000);
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(find.byType(Slider), findsNothing);
       expect(
-        find.descendant(of: radiusButton, matching: find.text('5 كم')),
+        find.descendant(of: radiusButton, matching: find.text('2 كم')),
         findsOneWidget,
       );
-    });
-
-    testWidgets('closing the sheet mid-drag ends the drag like a release: '
-        'one query with the value shown', (WidgetTester tester) async {
-      final FakeMapRepository repository = FakeMapRepository(pins: <Pin>[ad1]);
-      await pumpMap(tester, repository);
-      await tester.pumpAndSettle();
-
-      await tester.tap(radiusButton);
-      await tester.pumpAndSettle();
-      final TestGesture drag = await tester.startGesture(
-        tester.getCenter(slider),
-      );
-      await drag.moveTo(tester.getRect(slider).centerLeft);
-      await tester.pump();
-      expect(shownRadius, 5000);
-
-      Navigator.of(tester.element(slider)).pop();
-      await tester.pumpAndSettle();
-      await drag.up();
-      await tester.pumpAndSettle();
-
-      expect(repository.radii, <int>[2000, 5000]);
-      expect(shownRadius, 5000);
-      expect(shownFitRadius, 5000);
-      expect(
-        find.descendant(of: radiusButton, matching: find.text('5 كم')),
-        findsOneWidget,
-      );
+      expect(repository.radii, <int>[2000]);
     });
   });
 
@@ -321,9 +264,6 @@ void main() {
       await tester.pump(mapPollInterval);
       await tester.pump();
     }
-
-    ProviderContainer containerOf(WidgetTester tester) =>
-        ProviderScope.containerOf(tester.element(mapSurface));
 
     final Finder banner = find.byType(OfflineBanner);
 
@@ -419,20 +359,6 @@ void main() {
       await nextPoll(tester);
       expect(repository.calls, 3);
       expect(repository.mostRunning, 1);
-    });
-
-    testWidgets('keeps polling under the radius sheet: the map still shows', (
-      WidgetTester tester,
-    ) async {
-      final FakeMapRepository repository = FakeMapRepository(pins: <Pin>[ad1]);
-      await pumpMap(tester, repository);
-      await tester.pumpAndSettle();
-
-      await tester.tap(radiusButton);
-      await tester.pumpAndSettle();
-      expect(find.byType(RadiusSheet), findsOneWidget);
-      await nextPoll(tester);
-      expect(repository.calls, 2);
     });
 
     testWidgets('pauses while the app is hidden; on return, queries at once', (
@@ -568,25 +494,6 @@ void main() {
 
       await pollWith(<Pin>[]);
       expect(empty, findsOneWidget);
-    });
-
-    testWidgets('a radius release keeps the pins and shows no loading card', (
-      WidgetTester tester,
-    ) async {
-      final FakeMapRepository repository = FakeMapRepository(pins: <Pin>[ad1])
-        ..gateByRadius = <int, Completer<void>>{3000: Completer<void>()};
-      await pumpMap(tester, repository);
-      await tester.pumpAndSettle();
-
-      containerOf(tester).read(searchRadiusProvider.notifier).set(3000);
-      await tester.pump();
-      expect(repository.radii, <int>[2000, 3000]);
-      expect(find.text(AppStrings.mapLoading), findsNothing);
-      expect(pinMarker(ad1), findsOneWidget);
-
-      repository.gateByRadius[3000]!.complete();
-      await tester.pumpAndSettle();
-      expect(pinMarker(ad1), findsOneWidget);
     });
 
     testWidgets('an unchanged poll passes the same pins, so the markers stay '

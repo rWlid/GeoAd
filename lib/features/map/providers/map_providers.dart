@@ -35,39 +35,6 @@ final Provider<LatLng?> mapCenterProvider = Provider<LatLng?>((Ref ref) {
       : ref.watch(manualCenterProvider);
 });
 
-final NotifierProvider<SearchRadiusNotifier, int> searchRadiusProvider =
-    NotifierProvider<SearchRadiusNotifier, int>(SearchRadiusNotifier.new);
-
-class SearchRadiusNotifier extends Notifier<int> {
-  @override
-  int build() => defaultSearchRadiusMeters;
-
-  void set(int meters) => state = snapSearchRadius(meters);
-}
-
-int snapSearchRadius(num meters) {
-  final int snapped =
-      (meters / searchRadiusStepMeters).round() * searchRadiusStepMeters;
-  return snapped.clamp(minSearchRadiusMeters, maxSearchRadiusMeters);
-}
-
-final NotifierProvider<RadiusPreviewNotifier, int?> radiusPreviewProvider =
-    NotifierProvider<RadiusPreviewNotifier, int?>(RadiusPreviewNotifier.new);
-
-class RadiusPreviewNotifier extends Notifier<int?> {
-  @override
-  int? build() => null;
-
-  void show(int meters) => state = snapSearchRadius(meters);
-
-  void clear() => state = null;
-}
-
-final Provider<int> shownRadiusProvider = Provider<int>(
-  (Ref ref) =>
-      ref.watch(radiusPreviewProvider) ?? ref.watch(searchRadiusProvider),
-);
-
 typedef PollTimer = Timer Function(Duration duration, void Function() onTick);
 
 final Provider<PollTimer> pollTimerProvider = Provider<PollTimer>(
@@ -125,7 +92,6 @@ class NearbyPinsNotifier extends Notifier<NearbyPins> {
         _pollMovedDevice = true;
       }
     });
-    ref.listen<int>(searchRadiusProvider, (_, _) => _onBuyerChange());
     ref.listen<bool>(mapVisibleProvider, (_, bool visible) {
       if (!visible) {
         _cancelTimer();
@@ -197,7 +163,6 @@ class NearbyPinsNotifier extends Notifier<NearbyPins> {
     _cancelTimer();
     final int generation = ++_generation;
     _running = true;
-    final int radius = ref.read(searchRadiusProvider);
     final List<Pin> pins;
     try {
       pins = await ref
@@ -205,7 +170,7 @@ class NearbyPinsNotifier extends Notifier<NearbyPins> {
           .nearbyAds(
             lat: center.latitude,
             lng: center.longitude,
-            radiusMeters: radius,
+            radiusMeters: defaultSearchRadiusMeters,
           );
     } catch (error, stackTrace) {
       final NearbyPins? current = _currentFor(generation);

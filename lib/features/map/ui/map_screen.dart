@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../../core/constants.dart';
 import '../../../core/errors.dart';
 import '../../../core/strings_ar.dart';
 import '../../../core/theme.dart';
@@ -14,7 +15,6 @@ import '../providers/buyer_location_providers.dart';
 import '../providers/map_providers.dart';
 import 'location_card.dart';
 import 'pin_map.dart';
-import 'radius_sheet.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key, this.mapBuilder = PinMap.new});
@@ -91,8 +91,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               center: center,
               centerFromDevice:
                   ref.watch(buyerLocationProvider) is BuyerLocated,
-              radiusMeters: ref.watch(shownRadiusProvider),
-              fitRadiusMeters: ref.watch(searchRadiusProvider),
               pins: pins,
               onMapTap: _onMapTap,
               topPadding: MediaQuery.paddingOf(context).top,
@@ -127,9 +125,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       floatingActionButton: FloatingActionButton.extended(
         heroTag: null,
         tooltip: AppStrings.searchRadius,
-        onPressed: () => showRadiusSheet(context, ref),
+        onPressed: () {},
         icon: const Icon(Icons.radar),
-        label: Text(formatKilometers(ref.watch(shownRadiusProvider))),
+        label: Text(formatKilometers(defaultSearchRadiusMeters)),
       ),
     );
   }
