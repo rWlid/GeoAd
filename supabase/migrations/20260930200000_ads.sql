@@ -1,6 +1,11 @@
 -- The whole database for the learning version: one table of ads.
 -- Paste this into the Supabase SQL editor, or run `supabase db reset` locally.
 
+-- If this project ran the old GeoAd migrations, its sign-up trigger
+-- demands a 9665XXXXXXXX phone and breaks the fake OTP sign up. Remove it.
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_user();
+
 create table ads (
   id bigint generated always as identity primary key,
   title text not null,
