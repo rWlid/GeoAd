@@ -39,15 +39,15 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ads'),
+        title: const Text('الإعلانات'),
         actions: [
           IconButton(
-            tooltip: 'Refresh',
+            tooltip: 'تحديث',
             icon: const Icon(Icons.refresh),
             onPressed: () => setState(() => _ads = _loadAds()),
           ),
           IconButton(
-            tooltip: 'Sign out',
+            tooltip: 'تسجيل الخروج',
             icon: const Icon(Icons.logout),
             // main.dart hears the sign out and shows the sign in screen.
             onPressed: () => Supabase.instance.client.auth.signOut(),
@@ -58,7 +58,7 @@ class _MapScreenState extends State<MapScreen> {
         future: _ads,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(child: Text('خطأ: ${snapshot.error}'));
           }
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());

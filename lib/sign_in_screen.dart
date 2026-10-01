@@ -22,7 +22,7 @@ class _SignInScreenState extends State<SignInScreen> {
     final phone = _phone.text.trim();
     if (phone.length < 9) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid phone number')),
+        const SnackBar(content: Text('أدخل رقم جوال صحيح')),
       );
       return;
     }
@@ -35,7 +35,7 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign in')),
+      appBar: AppBar(title: const Text('تسجيل الدخول')),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -43,15 +43,16 @@ class _SignInScreenState extends State<SignInScreen> {
             TextField(
               controller: _phone,
               keyboardType: TextInputType.phone,
+              textDirection: TextDirection.ltr, // numbers read left to right
               decoration: const InputDecoration(
-                labelText: 'Phone number',
+                labelText: 'رقم الجوال',
                 hintText: '05XXXXXXXX',
               ),
             ),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _sendCode,
-              child: const Text('Send code'),
+              child: const Text('إرسال الرمز'),
             ),
           ],
         ),

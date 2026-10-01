@@ -25,7 +25,7 @@ class _OtpScreenState extends State<OtpScreen> {
 
   Future<void> _verify() async {
     if (_code.text.trim() != fakeCode) {
-      _showError('Wrong code. Use $fakeCode');
+      _showError('الرمز غير صحيح، استخدم $fakeCode');
       return;
     }
 
@@ -63,18 +63,18 @@ class _OtpScreenState extends State<OtpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Enter code')),
+      appBar: AppBar(title: const Text('أدخل الرمز')),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Text('We "sent" a code to ${widget.phone}. Hint: $fakeCode'),
+            Text('"أرسلنا" رمزًا إلى ${widget.phone}. تلميح: $fakeCode'),
             const SizedBox(height: 16),
             TextField(
               controller: _code,
               keyboardType: TextInputType.number,
               maxLength: 4,
-              decoration: const InputDecoration(labelText: 'Code'),
+              decoration: const InputDecoration(labelText: 'الرمز'),
             ),
             const SizedBox(height: 24),
             FilledButton(
@@ -85,7 +85,7 @@ class _OtpScreenState extends State<OtpScreen> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Text('Verify'),
+                  : const Text('تحقق'),
             ),
           ],
         ),
