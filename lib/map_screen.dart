@@ -12,26 +12,32 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   late Future<List<Map<String, dynamic>>> _ads = _loadAds();
 
-  // The whole "get ads from the database" step. RLS only lets
-  // signed-in users read the ads table.
+  // The whole "get ads from the database" step. Each active ad comes
+  // with its list of locations; Supabase follows ad_locations to find them.
+  // RLS only lets signed-in users read these tables.
   Future<List<Map<String, dynamic>>> _loadAds() {
-    return Supabase.instance.client.from('ads').select();
+    return Supabase.instance.client
+        .from('ads')
+        .select('id, title, description, locations(id, name, lat, lng)')
+        .eq('is_active', true);
   }
 
+  // One marker per ad per location: an ad at two branches shows twice.
   Set<Marker> _markers(List<Map<String, dynamic>> ads) {
     return {
       for (final ad in ads)
-        Marker(
-          markerId: MarkerId(ad['id'].toString()),
-          position: LatLng(
-            (ad['lat'] as num).toDouble(),
-            (ad['lng'] as num).toDouble(),
+        for (final location in ad['locations'] as List)
+          Marker(
+            markerId: MarkerId('${ad['id']}-${location['id']}'),
+            position: LatLng(
+              (location['lat'] as num).toDouble(),
+              (location['lng'] as num).toDouble(),
+            ),
+            infoWindow: InfoWindow(
+              title: ad['title'] as String,
+              snippet: location['name'] as String?,
+            ),
           ),
-          infoWindow: InfoWindow(
-            title: ad['title'] as String,
-            snippet: ad['description'] as String?,
-          ),
-        ),
     };
   }
 

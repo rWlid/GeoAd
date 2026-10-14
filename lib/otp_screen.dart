@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Fake OTP: this is the only code that works.
+// Fake OTP
 const fakeCode = '1234';
 
 class OtpScreen extends StatefulWidget {
@@ -25,27 +25,34 @@ class _OtpScreenState extends State<OtpScreen> {
 
   Future<void> _verify() async {
     if (_code.text.trim() != fakeCode) {
-      _showError('الرمز غير صحيح، استخدم $fakeCode');
+      _showError('الرمز غير صحيح. استخدم $fakeCode');
       return;
     }
 
-    // The trick: Supabase has no free phone OTP, so each phone number
-    // becomes a hidden email + password that only this app knows.
     final email = '${widget.phone}@phone.geoad.app';
     final password = 'geoad-mock-${widget.phone}';
-    final auth = Supabase.instance.client.auth;
+    final db = Supabase.instance.client;
 
     setState(() => _loading = true);
     try {
+      // Only accounts that already exist with a profile get in.
+      // Anyone else is simply not let in, with no message.
       try {
-        await auth.signInWithPassword(email: email, password: password);
-      } on AuthException {
-        // First time with this phone: create the account instead.
-        // Needs "Confirm email" turned off in Supabase Auth settings.
-        await auth.signUp(email: email, password: password);
+        await db.auth.signInWithPassword(email: email, password: password);
+      } on AuthException catch (e) {
+        if (e.code == 'invalid_credentials') return;
+        rethrow;
+      }
+      final profile = await db
+          .from('profiles')
+          .select('id')
+          .eq('id', db.auth.currentUser!.id)
+          .maybeSingle();
+      if (profile == null) {
+        await db.auth.signOut();
+        return;
       }
       if (!mounted) return;
-      // Signed in: drop this screen so the map (shown by main.dart) is visible.
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
       _showError(e.toString());
@@ -55,20 +62,20 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('أدخل الرمز')),
+      appBar: AppBar(title: const Text('رمز التحقق'), centerTitle: true),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            Text('"أرسلنا" رمزًا إلى ${widget.phone}. تلميح: $fakeCode'),
+            Text('أرسلنا رمز إلى ${widget.phone}'),
             const SizedBox(height: 16),
             TextField(
               controller: _code,

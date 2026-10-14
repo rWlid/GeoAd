@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'map_screen.dart';
+import 'home_screen.dart';
 import 'sign_in_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Values come from env/dev.json via --dart-define-from-file.
   await Supabase.initialize(
     url: const String.fromEnvironment('SUPABASE_URL'),
     publishableKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
@@ -48,7 +47,7 @@ class GeoAdApp extends StatelessWidget {
           if (auth.currentSession == null) {
             return const SignInScreen();
           }
-          return const MapScreen();
+          return const HomeScreen();
         },
       ),
     );
