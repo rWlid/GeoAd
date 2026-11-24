@@ -12,9 +12,10 @@ class AccountScreen extends StatefulWidget {
 
 class _AccountScreenState extends State<AccountScreen> {
   final _db = Supabase.instance.client;
+  // قراءة بيانات الحساب: لعرض حقل إضافي أضف اسمه داخل select
   late final Future<Map<String, dynamic>> _profile = _db
       .from('profiles')
-      .select('name, phone')
+      .select('name, phone, email')
       .eq('id', _db.auth.currentUser!.id)
       .single();
 
@@ -33,6 +34,7 @@ class _AccountScreenState extends State<AccountScreen> {
           }
           final name = snapshot.data!['name'] as String;
           final phone = snapshot.data!['phone'] as String;
+          final email = snapshot.data!['email'] as String?;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -47,11 +49,10 @@ class _AccountScreenState extends State<AccountScreen> {
                         child: Icon(Icons.person, size: 36),
                       ),
                       const SizedBox(height: 12),
-                      Text(
-                        name,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
+                      Text(name, style: Theme.of(context).textTheme.titleLarge),
                       Text(phone),
+                      // البريد الإلكتروني تحت الجوال: يظهر فقط إذا كان موجوداً
+                      if (email != null) Text(email),
                     ],
                   ),
                 ),
@@ -63,7 +64,7 @@ class _AccountScreenState extends State<AccountScreen> {
                   title: const Text('منتجاتي'),
                   trailing: const Icon(Icons.chevron_left),
                   onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const MyProductsScreen()), 
+                    MaterialPageRoute(builder: (_) => const MyProductsScreen()),
                   ),
                 ),
               ),
