@@ -35,23 +35,34 @@ class _OtpScreenState extends State<OtpScreen> {
 
     setState(() => _loading = true);
     try {
-      // Only accounts that already exist with a profile get in.
-      // Anyone else is simply not let in, with no message.
+      // A missing account fails sign-in with invalid_credentials.
+      // Create it with the same derived email and password instead.
       try {
         await db.auth.signInWithPassword(email: email, password: password);
       } on AuthException catch (e) {
-        if (e.code == 'invalid_credentials') return;
-        rethrow;
+        if (e.code != 'invalid_credentials') rethrow;
+        await db.auth.signUp(email: email, password: password);
       }
+
+      final user = db.auth.currentUser;
+      if (user == null) {
+        _showError('حدث خطأ أثناء تسجيل الدخول، حاول مرة أخرى');
+        return;
+      }
+
       final profile = await db
           .from('profiles')
           .select('id')
-          .eq('id', db.auth.currentUser!.id)
+          .eq('id', user.id)
           .maybeSingle();
       if (profile == null) {
-        await db.auth.signOut();
-        return;
+        await db.from('profiles').insert({
+          'id': user.id,
+          'phone': widget.phone,
+          'email': email,
+        });
       }
+
       if (!mounted) return;
       Navigator.of(context).popUntil((route) => route.isFirst);
     } catch (e) {
