@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// نفس الشاشة للإضافة والتعديل: إذا أرسلنا product تفتح للتعديل
 class AddProductScreen extends StatefulWidget {
-  const AddProductScreen({super.key});
+  const AddProductScreen({super.key, this.product});
+
+  final Map<String, dynamic>? product; // null = إضافة منتج جديد
 
   @override
   State<AddProductScreen> createState() => _AddProductScreenState();
@@ -21,13 +24,24 @@ class _AddProductScreenState extends State<AddProductScreen> {
   bool _isService = false;
   bool _saving = false;
   int? _categoryId;
-  Uint8List? _imageBytes; // الصورة المختارة قبل رفعها
+  Uint8List? _imageBytes; // الصورة الجديدة المختارة قبل رفعها
+  String? _oldImagePath; // صورة المنتج الحالية (في التعديل فقط)
   List<Map<String, dynamic>> _categories = []; // الأقسام الفرعية فقط
 
   @override
   void initState() {
     super.initState();
     _loadCategories();
+    // في التعديل: نعبّي الحقول ببيانات المنتج
+    final p = widget.product;
+    if (p != null) {
+      _name.text = p['name'];
+      _price.text = '${p['price']}';
+      _quantity.text = '${p['quantity'] ?? 0}';
+      _isService = p['is_service'];
+      _categoryId = p['category_id'];
+      _oldImagePath = p['image_path'];
+    }
   }
 
   // مثال لاسم القسم في القائمة: "إلكترونيات وأجهزة › جوالات"
@@ -85,24 +99,31 @@ class _AddProductScreenState extends State<AddProductScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      // 1) رفع الصورة داخل مجلد باسم البائع
-      String? imagePath;
+      // 1) رفع الصورة الجديدة داخل مجلد باسم البائع
+      String? imagePath = _oldImagePath;
       if (_imageBytes != null) {
         imagePath =
             '${_db.auth.currentUser!.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-        await _db.storage
-            .from('images')
-            .uploadBinary(imagePath, _imageBytes!);
+        await _db.storage.from('images').uploadBinary(imagePath, _imageBytes!);
       }
-      // 2) حفظ المنتج
-      await _db.from('products').insert({
+      // 2) حفظ المنتج: إضافة جديد أو تعديل الموجود
+      final data = {
         'name': _name.text.trim(),
         'price': num.parse(_price.text.trim()),
         'category_id': _categoryId,
         'is_service': _isService,
         'quantity': _isService ? null : int.parse(_quantity.text.trim()),
         'image_path': imagePath,
-      });
+      };
+      if (widget.product == null) {
+        await _db.from('products').insert(data);
+      } else {
+        await _db.from('products').update(data).eq('id', widget.product!['id']);
+        // 3) إذا تغيّرت الصورة نحذف القديمة
+        if (_imageBytes != null && _oldImagePath != null) {
+          await _db.storage.from('images').remove([_oldImagePath!]);
+        }
+      }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       setState(() => _saving = false);
@@ -124,9 +145,18 @@ class _AddProductScreenState extends State<AddProductScreen> {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     const gap = SizedBox(height: 16);
+    // الصورة المعروضة: الجديدة إن وجدت، وإلا صورة المنتج الحالية
+    final ImageProvider? image = _imageBytes != null
+        ? MemoryImage(_imageBytes!)
+        : _oldImagePath != null
+        ? NetworkImage(_db.storage.from('images').getPublicUrl(_oldImagePath!))
+        : null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('إضافة منتج'), centerTitle: true),
+      appBar: AppBar(
+        title: Text(widget.product == null ? 'إضافة منتج' : 'تعديل المنتج'),
+        centerTitle: true,
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -141,14 +171,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 decoration: BoxDecoration(
                   color: colors.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(16),
-                  image: _imageBytes == null
+                  image: image == null
                       ? null
-                      : DecorationImage(
-                          image: MemoryImage(_imageBytes!),
-                          fit: BoxFit.cover,
-                        ),
+                      : DecorationImage(image: image, fit: BoxFit.cover),
                 ),
-                child: _imageBytes != null
+                child: image != null
                     ? Align(
                         alignment: AlignmentDirectional.bottomEnd,
                         child: Padding(
@@ -229,7 +256,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
                     ),
             ),
             DropdownButtonFormField<int>(
-              initialValue: _categoryId,
+              // يُبنى من جديد بعد تحميل الأقسام حتى يظهر قسم المنتج
+              key: ValueKey(_categories.length),
+              initialValue: _categories.any((c) => c['id'] == _categoryId)
+                  ? _categoryId
+                  : null,
               isExpanded: true,
               decoration: _box('القسم'),
               items: [

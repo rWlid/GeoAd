@@ -25,7 +25,9 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
     try {
       final rows = await _db
           .from('products')
-          .select('id, name, price, is_service, quantity, image_path')
+          .select(
+            'id, name, price, is_service, quantity, image_path, category_id',
+          )
           .eq('owner', _db.auth.currentUser!.id)
           .order('created_at', ascending: false);
       setState(() {
@@ -127,6 +129,14 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
     }
   }
 
+  // فتح شاشة المنتج: بدون p للإضافة، ومع p للتعديل
+  Future<void> _openForm([Map<String, dynamic>? p]) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AddProductScreen(product: p)),
+    );
+    if (saved == true) _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -134,12 +144,7 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
       floatingActionButton: FloatingActionButton.extended(
         icon: const Icon(Icons.add),
         label: const Text('إضافة منتج'),
-        onPressed: () async {
-          final added = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(builder: (_) => const AddProductScreen()),
-          );
-          if (added == true) _load();
-        },
+        onPressed: () => _openForm(),
       ),
       body: _buildBody(),
     );
@@ -170,16 +175,24 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
       child: ListView(
         // مسافة في الأسفل حتى لا يغطي زر الإضافة آخر منتج
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-        children: [
-          Text(
-            'اسحب المنتج إلى الجانب لحذفه',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: grey),
-          ),
-          const SizedBox(height: 8),
-          for (final p in _products!) _productCard(p),
-        ],
+        children: [for (final p in _products!) _productCard(p)],
       ),
+    );
+  }
+
+  // الخلفية الملونة التي تظهر تحت البطاقة أثناء السحب
+  Widget _swipeBackground(Color color, IconData icon, bool atStart) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      alignment: atStart
+          ? AlignmentDirectional.centerStart
+          : AlignmentDirectional.centerEnd,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, color: Colors.white),
     );
   }
 
@@ -189,19 +202,17 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
     final quantity = (p['quantity'] as int?) ?? 0;
     final imagePath = p['image_path'] as String?;
 
-    // السحب لأي جهة يحذف المنتج بعد التأكيد
+    // السحب من اليمين = حذف (بعد التأكيد)، السحب من اليسار = تعديل
     return Dismissible(
       key: ValueKey(p['id']),
-      confirmDismiss: (_) => _confirmDelete(p),
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd) return _confirmDelete(p);
+        _openForm(p);
+        return false; // التعديل لا يحذف البطاقة
+      },
       onDismissed: (_) => _delete(p),
-      background: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          color: colors.error,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(Icons.delete, color: Colors.white),
-      ),
+      background: _swipeBackground(colors.error, Icons.delete, true),
+      secondaryBackground: _swipeBackground(colors.primary, Icons.edit, false),
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 4),
         child: Padding(
@@ -221,9 +232,7 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
                           color: colors.outline,
                         )
                       : Image.network(
-                          _db.storage
-                              .from('images')
-                              .getPublicUrl(imagePath),
+                          _db.storage.from('images').getPublicUrl(imagePath),
                           fit: BoxFit.cover,
                         ),
                 ),
