@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'branches_screen.dart';
+import 'driver_card.dart';
 import 'my_products_screen.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -15,7 +17,7 @@ class _AccountScreenState extends State<AccountScreen> {
   // قراءة بيانات الحساب: لعرض حقل إضافي أضف اسمه داخل select
   late final Future<Map<String, dynamic>> _profile = _db
       .from('profiles')
-      .select('name, phone, email')
+      .select('name, phone, email, is_business')
       .eq('id', _db.auth.currentUser!.id)
       .single();
 
@@ -34,6 +36,7 @@ class _AccountScreenState extends State<AccountScreen> {
           }
           final name = snapshot.data!['name'] as String;
           final phone = snapshot.data!['phone'] as String;
+          final isBusiness = snapshot.data!['is_business'] as bool;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -50,10 +53,12 @@ class _AccountScreenState extends State<AccountScreen> {
                       const SizedBox(height: 12),
                       Text(name, style: Theme.of(context).textTheme.titleLarge),
                       Text(phone),
-                      ],
+                    ],
                   ),
                 ),
               ),
+              // Shows only for people who drive a mobile branch.
+              DriverCard(phone: phone),
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
@@ -65,6 +70,17 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                 ),
               ),
+              if (isBusiness)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.storefront),
+                    title: const Text('فروعي'),
+                    trailing: const Icon(Icons.chevron_left),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const BranchesScreen()),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 24),
               TextButton.icon(
                 icon: const Icon(Icons.logout),

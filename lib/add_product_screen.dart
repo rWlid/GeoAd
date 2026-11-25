@@ -27,11 +27,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
   Uint8List? _imageBytes; // الصورة الجديدة المختارة قبل رفعها
   String? _oldImagePath; // صورة المنتج الحالية (في التعديل فقط)
   List<Map<String, dynamic>> _categories = []; // الأقسام الفرعية فقط
+  List<Map<String, dynamic>> _branches = []; // فروع البائع
+  bool _allBranches = true; // متوفر في كل الفروع
+  final Set<int> _branchIds = {}; // الفروع المختارة عند إطفاء "كل الفروع"
+  bool _showBranchError = false;
 
   @override
   void initState() {
     super.initState();
     _loadCategories();
+    _loadBranches();
     // في التعديل: نعبّي الحقول ببيانات المنتج
     final p = widget.product;
     if (p != null) {
@@ -41,6 +46,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _isService = p['is_service'];
       _categoryId = p['category_id'];
       _oldImagePath = p['image_path'];
+      for (final row in p['product_locations']) {
+        _branchIds.add(row['location_id']);
+      }
+      _allBranches = _branchIds.isEmpty; // لا صفوف = كل الفروع
     }
   }
 
@@ -58,6 +67,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
             {'id': c['id'], 'label': '${names[c['parent_id']]} › ${c['name']}'},
       ];
     });
+  }
+
+  // فروع البائع لاختيار أين يتوفر المنتج
+  Future<void> _loadBranches() async {
+    final rows = await _db
+        .from('locations')
+        .select('id, name')
+        .eq('owner', _db.auth.currentUser!.id)
+        .order('created_at');
+    if (!mounted) return;
+    setState(() => _branches = rows);
   }
 
   Future<void> _pickImage() async {
@@ -96,7 +116,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    final fieldsOk = _formKey.currentState!.validate();
+    setState(() => _showBranchError = !_allBranches && _branchIds.isEmpty);
+    if (!fieldsOk || _showBranchError) return;
     setState(() => _saving = true);
     try {
       // 1) رفع الصورة الجديدة داخل مجلد باسم البائع
@@ -115,14 +137,29 @@ class _AddProductScreenState extends State<AddProductScreen> {
         'quantity': _isService ? null : int.parse(_quantity.text.trim()),
         'image_path': imagePath,
       };
+      int productId;
       if (widget.product == null) {
-        await _db.from('products').insert(data);
+        final row = await _db
+            .from('products')
+            .insert(data)
+            .select('id')
+            .single();
+        productId = row['id'];
       } else {
-        await _db.from('products').update(data).eq('id', widget.product!['id']);
+        productId = widget.product!['id'];
+        await _db.from('products').update(data).eq('id', productId);
         // 3) إذا تغيّرت الصورة نحذف القديمة
         if (_imageBytes != null && _oldImagePath != null) {
           await _db.storage.from('images').remove([_oldImagePath!]);
         }
+      }
+      // 4) الفروع: نحذف القديم ونكتب المختار (لا صفوف = كل الفروع)
+      await _db.from('product_locations').delete().eq('product_id', productId);
+      if (!_allBranches) {
+        await _db.from('product_locations').insert([
+          for (final id in _branchIds)
+            {'product_id': productId, 'location_id': id},
+        ]);
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -273,6 +310,55 @@ class _AddProductScreenState extends State<AddProductScreen> {
               onChanged: (v) => setState(() => _categoryId = v),
               validator: (v) => v == null ? 'اختر القسم' : null,
             ),
+            // أين يتوفر المنتج: يظهر فقط إذا كان للبائع فروع
+            if (_branches.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('متوفر في كل الفروع'),
+                value: _allBranches,
+                onChanged: (v) => setState(() {
+                  _allBranches = v;
+                  _showBranchError = false;
+                }),
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 200),
+                child: _allBranches
+                    ? const SizedBox(width: double.infinity)
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              for (final b in _branches)
+                                FilterChip(
+                                  label: Text(b['name'] ?? ''),
+                                  selected: _branchIds.contains(b['id']),
+                                  onSelected: (on) => setState(() {
+                                    if (on) {
+                                      _branchIds.add(b['id']);
+                                    } else {
+                                      _branchIds.remove(b['id']);
+                                    }
+                                    _showBranchError = false;
+                                  }),
+                                ),
+                            ],
+                          ),
+                          if (_showBranchError)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                'اختر فرعاً واحداً على الأقل',
+                                style: TextStyle(color: colors.error),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ],
             const SizedBox(height: 28),
             FilledButton(
               onPressed: _saving ? null : _save,

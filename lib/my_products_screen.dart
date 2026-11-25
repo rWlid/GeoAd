@@ -26,7 +26,8 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
       final rows = await _db
           .from('products')
           .select(
-            'id, name, price, is_service, quantity, image_path, category_id',
+            'id, name, price, is_service, quantity, image_path, category_id, '
+            'product_locations(location_id, locations(name))',
           )
           .eq('owner', _db.auth.currentUser!.id)
           .order('created_at', ascending: false);
@@ -201,6 +202,7 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
     final isService = p['is_service'] as bool;
     final quantity = (p['quantity'] as int?) ?? 0;
     final imagePath = p['image_path'] as String?;
+    final branchRows = p['product_locations'] as List; // لا صفوف = كل الفروع
 
     // السحب من اليمين = حذف (بعد التأكيد)، السحب من اليسار = تعديل
     return Dismissible(
@@ -253,6 +255,17 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
                     Text(
                       '${p['price']} ر.س',
                       style: TextStyle(color: colors.primary),
+                    ),
+                    Text(
+                      branchRows.isEmpty
+                          ? 'كل الفروع'
+                          : [
+                              for (final row in branchRows)
+                                row['locations']['name'],
+                            ].join('، '),
+                      style: Theme.of(context).textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     if (!isService && p['quantity'] == 0)
                       Text(
