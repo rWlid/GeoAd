@@ -34,7 +34,6 @@ class _AccountScreenState extends State<AccountScreen> {
           }
           final name = snapshot.data!['name'] as String;
           final phone = snapshot.data!['phone'] as String;
-          final email = snapshot.data!['email'] as String?;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -51,9 +50,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       const SizedBox(height: 12),
                       Text(name, style: Theme.of(context).textTheme.titleLarge),
                       Text(phone),
-                      // البريد الإلكتروني تحت الجوال: يظهر فقط إذا كان موجوداً
-                      if (email != null) Text(email),
-                    ],
+                      ],
                   ),
                 ),
               ),
