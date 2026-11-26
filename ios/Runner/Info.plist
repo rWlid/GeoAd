@@ -29,7 +29,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>لتصوير المنتج</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>لتحديد مكان فرعك على الخريطة، ولمشاركة موقع الفرع المتنقل مع العملاء أثناء فتح التطبيق</string>
+	<string>لعرض الإعلانات القريبة منك على الخريطة، ولتحديد مكان فرعك ومشاركة موقع الفرع المتنقل مع العملاء أثناء فتح التطبيق</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>لاختيار صورة المنتج من الاستوديو</string>
 	<key>UIApplicationSceneManifest</key>

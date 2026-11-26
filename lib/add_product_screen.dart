@@ -22,10 +22,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   bool _isService = false;
   bool _saving = false;
-  int? _categoryId;
+  int? _mainId; // القسم الرئيسي المختار، مثل "إلكترونيات وأجهزة"
+  int? _categoryId; // القسم الفرعي المختار، مثل "جوالات"
   Uint8List? _imageBytes; // الصورة الجديدة المختارة قبل رفعها
   String? _oldImagePath; // صورة المنتج الحالية (في التعديل فقط)
-  List<Map<String, dynamic>> _categories = []; // الأقسام الفرعية فقط
+  List<Map<String, dynamic>> _categories = []; // كل الأقسام: الرئيسية والفرعية
   List<Map<String, dynamic>> _branches = []; // فروع البائع
   // الخدمة: متوفرة في كل الفروع أو في فروع مختارة
   bool _allBranches = true;
@@ -57,19 +58,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
-  // مثال لاسم القسم في القائمة: "إلكترونيات وأجهزة › جوالات"
+  // نحمّل كل الأقسام. في التعديل نختار القسم الرئيسي لقسم المنتج الفرعي.
   Future<void> _loadCategories() async {
     final rows = await _db
         .from('categories')
         .select()
         .order('id', ascending: true);
-    final names = {for (final c in rows) c['id']: c['name']};
     setState(() {
-      _categories = [
-        for (final c in rows)
-          if (c['parent_id'] != null)
-            {'id': c['id'], 'label': '${names[c['parent_id']]} › ${c['name']}'},
-      ];
+      _categories = rows;
+      for (final c in rows) {
+        if (c['id'] == _categoryId) _mainId = c['parent_id'];
+      }
     });
   }
 
@@ -300,24 +299,48 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   : null,
             ),
             gap,
+            // ١) القسم الرئيسي
             DropdownButtonFormField<int>(
               // يُبنى من جديد بعد تحميل الأقسام حتى يظهر قسم المنتج
               key: ValueKey(_categories.length),
-              initialValue: _categories.any((c) => c['id'] == _categoryId)
-                  ? _categoryId
-                  : null,
+              initialValue: _mainId,
               isExpanded: true,
               decoration: _box('القسم'),
               items: [
                 for (final c in _categories)
-                  DropdownMenuItem(
-                    value: c['id'] as int,
-                    child: Text(c['label'] as String),
-                  ),
+                  if (c['parent_id'] == null)
+                    DropdownMenuItem(
+                      value: c['id'] as int,
+                      child: Text(c['name'] as String),
+                    ),
               ],
-              onChanged: (v) => setState(() => _categoryId = v),
+              // قسم رئيسي جديد = نختار القسم الفرعي من جديد
+              onChanged: (v) => setState(() {
+                _mainId = v;
+                _categoryId = null;
+              }),
               validator: (v) => v == null ? 'اختر القسم' : null,
             ),
+            // ٢) القسم الفرعي: يظهر بعد اختيار القسم الرئيسي، وفيه أقسامه فقط
+            if (_mainId != null) ...[
+              gap,
+              DropdownButtonFormField<int>(
+                key: ValueKey('$_mainId-${_categories.length}'),
+                initialValue: _categoryId,
+                isExpanded: true,
+                decoration: _box('القسم الفرعي'),
+                items: [
+                  for (final c in _categories)
+                    if (c['parent_id'] == _mainId)
+                      DropdownMenuItem(
+                        value: c['id'] as int,
+                        child: Text(c['name'] as String),
+                      ),
+                ],
+                onChanged: (v) => setState(() => _categoryId = v),
+                validator: (v) => v == null ? 'اختر القسم الفرعي' : null,
+              ),
+            ],
             // المنتج: عدد القطع في كل فرع
             if (!_isService) ...[
               const SizedBox(height: 20),
