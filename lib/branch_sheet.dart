@@ -162,7 +162,7 @@ class BranchSheet extends StatelessWidget {
     } else {
       final opens = parseTime(rows.first['opens_at']).format(context);
       final closes = parseTime(rows.first['closes_at']).format(context);
-      text = '$opens – $closes';
+      text = arabicDigits('$opens – $closes'); // "١٠:٠٠ ص – ١١:٠٠ م"
     }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
