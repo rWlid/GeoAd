@@ -5,10 +5,14 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'branch_status.dart';
+import 'my_position.dart';
 
-// The map of branches: every fixed branch, plus mobile branches that are
-// sharing their location right now. Tap a marker for the branch's details
-// and ads. Reloads every 30 seconds so mobile branches move.
+// Riyadh, where the camera starts before we know the customer's position.
+const riyadh = LatLng(24.7136, 46.6753);
+
+// The ads map: a pin for every branch that has an active ad (mobile
+// branches only while they share their location), plus the customer's
+// blue dot. Reloads every 30 seconds so mobile branches move.
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
 
@@ -20,6 +24,7 @@ class _MapScreenState extends State<MapScreen> {
   final _db = Supabase.instance.client;
   List<Map<String, dynamic>>? _branches; // null = still loading
   bool _loadFailed = false;
+  LatLng? _myPosition; // null = location off or not allowed
   GoogleMapController? _map;
   Timer? _timer;
 
@@ -27,6 +32,7 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     loadBranches();
+    findMe();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => loadBranches());
   }
 
@@ -36,13 +42,19 @@ class _MapScreenState extends State<MapScreen> {
     super.dispose();
   }
 
-  // Loads all branches with their hours and ads (ads come through
-  // ad_locations). RLS lets every signed-in user read these tables.
+  // Loads every branch with everything the map needs, in one query:
+  // hours, store name and logo, and the ads (through ad_locations) with
+  // their products (through ad_products) and each product's branch stock.
   Future<void> loadBranches() async {
     try {
       final rows = await _db
           .from('locations')
-          .select('*, branch_hours(*), ads(id, title, description, is_active)');
+          .select(
+            '*, branch_hours(*), stores(business_name, business_logo), '
+            'ads(id, title, description, is_active, '
+            'products(id, name, price, image_path, category_id, '
+            'product_locations(location_id, quantity)))',
+          );
       if (!mounted) return;
       setState(() {
         _branches = rows;
@@ -50,7 +62,7 @@ class _MapScreenState extends State<MapScreen> {
       });
     } catch (_) {
       if (!mounted) return;
-      // Keep showing the last markers; only an empty first load shows the error.
+      // Keep showing the last pins; only an empty first load shows the error.
       setState(() => _loadFailed = true);
     }
   }
@@ -59,6 +71,22 @@ class _MapScreenState extends State<MapScreen> {
   void retry() {
     setState(() => _loadFailed = false);
     loadBranches();
+  }
+
+  // Finds the customer's position and moves the camera there.
+  Future<void> findMe() async {
+    final position = await getMyPosition();
+    if (!mounted || position == null) return;
+    setState(() => _myPosition = LatLng(position.latitude, position.longitude));
+    _map?.animateCamera(CameraUpdate.newLatLngZoom(_myPosition!, 14));
+  }
+
+  // The map is ready: if we already know where the customer is, go there.
+  void onMapCreated(GoogleMapController controller) {
+    _map = controller;
+    if (_myPosition != null) {
+      _map!.animateCamera(CameraUpdate.newLatLngZoom(_myPosition!, 14));
+    }
   }
 
   // Moves the camera to the branch, then opens its details.
@@ -71,14 +99,18 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // One marker per branch on the map. Fixed and mobile have different
-  // colors; a closed fixed branch is faded. Same markerId on every reload,
-  // so a moving branch's marker is updated in place.
+  // One pin per branch that has an active ad. Fixed and mobile have
+  // different colors; a closed fixed branch is faded. Same markerId on
+  // every reload, so a moving branch's pin is updated in place.
   Set<Marker> buildMarkers() {
     final markers = <Marker>{};
     for (final branch in _branches!) {
       final isFixed = branch['type'] == 'fixed';
       if (!isFixed && !isVisibleNow(branch)) continue;
+      final hasActiveAd = (branch['ads'] as List).any(
+        (ad) => ad['is_active'] == true,
+      );
+      if (!hasActiveAd) continue;
       final position = LatLng(
         (branch['lat'] as num).toDouble(),
         (branch['lng'] as num).toDouble(),
@@ -113,7 +145,7 @@ class _MapScreenState extends State<MapScreen> {
               color: Theme.of(context).colorScheme.outline,
             ),
             const SizedBox(height: 12),
-            const Text('تعذّر تحميل الفروع، تحقق من الاتصال'),
+            const Text('تعذّر تحميل الإعلانات، تحقق من الاتصال'),
             const SizedBox(height: 16),
             FilledButton(onPressed: retry, child: const Text('إعادة المحاولة')),
           ],
@@ -125,34 +157,34 @@ class _MapScreenState extends State<MapScreen> {
         child: CircularProgressIndicator(),
       );
     } else {
-      body = GoogleMap(
+      body = Stack(
         key: const ValueKey('map'),
-        initialCameraPosition: const CameraPosition(
-          target: LatLng(24.7136, 46.6753), // Riyadh
-          zoom: 11,
-        ),
-        onMapCreated: (controller) => _map = controller,
-        markers: buildMarkers(),
+        children: [
+          GoogleMap(
+            initialCameraPosition: const CameraPosition(
+              target: riyadh,
+              zoom: 11,
+            ),
+            onMapCreated: onMapCreated,
+            myLocationEnabled: true,
+            myLocationButtonEnabled: false, // we have our own "موقعي"
+            markers: buildMarkers(),
+          ),
+          // Bottom start corner (right in Arabic), away from the Google logo.
+          PositionedDirectional(
+            start: 16,
+            bottom: 16,
+            child: FloatingActionButton.extended(
+              onPressed: findMe,
+              icon: const Icon(Icons.my_location),
+              label: const Text('موقعي'),
+            ),
+          ),
+        ],
       );
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('الخريطة'),
-        actions: [
-          IconButton(
-            tooltip: 'تحديث',
-            icon: const Icon(Icons.refresh),
-            onPressed: loadBranches,
-          ),
-          IconButton(
-            tooltip: 'تسجيل الخروج',
-            icon: const Icon(Icons.logout),
-            // main.dart hears the sign out and shows the sign in screen.
-            onPressed: () => _db.auth.signOut(),
-          ),
-        ],
-      ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
         child: body,
