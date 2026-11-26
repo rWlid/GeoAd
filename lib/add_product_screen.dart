@@ -19,7 +19,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _price = TextEditingController();
-  final _quantity = TextEditingController(text: '1');
 
   bool _isService = false;
   bool _saving = false;
@@ -28,8 +27,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
   String? _oldImagePath; // صورة المنتج الحالية (في التعديل فقط)
   List<Map<String, dynamic>> _categories = []; // الأقسام الفرعية فقط
   List<Map<String, dynamic>> _branches = []; // فروع البائع
-  bool _allBranches = true; // متوفر في كل الفروع
-  final Set<int> _branchIds = {}; // الفروع المختارة عند إطفاء "كل الفروع"
+  // الخدمة: متوفرة في كل الفروع أو في فروع مختارة
+  bool _allBranches = true;
+  final Set<int> _branchIds = {};
+  // المنتج: عدد القطع في كل فرع (رقم الفرع ← حقل العدد)
+  final Map<int, int> _oldQty = {}; // الأعداد المحفوظة قبل التعديل
+  final Map<int, TextEditingController> _branchQty = {};
   bool _showBranchError = false;
 
   @override
@@ -42,13 +45,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
     if (p != null) {
       _name.text = p['name'];
       _price.text = '${p['price']}';
-      _quantity.text = '${p['quantity'] ?? 0}';
       _isService = p['is_service'];
       _categoryId = p['category_id'];
       _oldImagePath = p['image_path'];
       for (final row in p['product_locations']) {
         _branchIds.add(row['location_id']);
       }
+      // stock تجهّزه شاشة منتجاتي، وفيه آخر الأعداد بعد ضغطات + و −
+      _oldQty.addAll(p['stock']);
       _allBranches = _branchIds.isEmpty; // لا صفوف = كل الفروع
     }
   }
@@ -77,7 +81,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
         .eq('owner', _db.auth.currentUser!.id)
         .order('created_at');
     if (!mounted) return;
-    setState(() => _branches = rows);
+    setState(() {
+      _branches = rows;
+      for (final b in rows) {
+        _branchQty[b['id']] = TextEditingController(
+          text: '${_oldQty[b['id']] ?? 0}',
+        );
+      }
+    });
   }
 
   Future<void> _pickImage() async {
@@ -117,7 +128,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   Future<void> _save() async {
     final fieldsOk = _formKey.currentState!.validate();
-    setState(() => _showBranchError = !_allBranches && _branchIds.isEmpty);
+    setState(
+      () =>
+          _showBranchError = _isService && !_allBranches && _branchIds.isEmpty,
+    );
     if (!fieldsOk || _showBranchError) return;
     setState(() => _saving = true);
     try {
@@ -134,7 +148,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         'price': num.parse(_price.text.trim()),
         'category_id': _categoryId,
         'is_service': _isService,
-        'quantity': _isService ? null : int.parse(_quantity.text.trim()),
+        'quantity': null, // العدد صار لكل فرع في product_locations
         'image_path': imagePath,
       };
       int productId;
@@ -153,13 +167,24 @@ class _AddProductScreenState extends State<AddProductScreen> {
           await _db.storage.from('images').remove([_oldImagePath!]);
         }
       }
-      // 4) الفروع: نحذف القديم ونكتب المختار (لا صفوف = كل الفروع)
+      // 4) الفروع: نحذف القديم ونكتب الجديد
       await _db.from('product_locations').delete().eq('product_id', productId);
-      if (!_allBranches) {
-        await _db.from('product_locations').insert([
+      final rows = [
+        // المنتج: صف لكل فرع مع عدد القطع فيه
+        if (!_isService)
+          for (final b in _branches)
+            {
+              'product_id': productId,
+              'location_id': b['id'],
+              'quantity': int.parse(_branchQty[b['id']]!.text.trim()),
+            },
+        // الخدمة: الفروع المختارة فقط (لا صفوف = كل الفروع)
+        if (_isService && !_allBranches)
           for (final id in _branchIds)
             {'product_id': productId, 'location_id': id},
-        ]);
+      ];
+      if (rows.isNotEmpty) {
+        await _db.from('product_locations').insert(rows);
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -275,23 +300,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
                   : null,
             ),
             gap,
-            // عدد القطع: للمنتج فقط، ويختفي بنعومة عند اختيار خدمة
-            AnimatedSize(
-              duration: const Duration(milliseconds: 200),
-              child: _isService
-                  ? const SizedBox(width: double.infinity)
-                  : Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: TextFormField(
-                        controller: _quantity,
-                        decoration: _box('عدد القطع'),
-                        keyboardType: TextInputType.number,
-                        validator: (v) => (int.tryParse(v!.trim()) ?? -1) < 0
-                            ? 'اكتب عدداً صحيحاً'
-                            : null,
-                      ),
-                    ),
-            ),
             DropdownButtonFormField<int>(
               // يُبنى من جديد بعد تحميل الأقسام حتى يظهر قسم المنتج
               key: ValueKey(_categories.length),
@@ -310,8 +318,42 @@ class _AddProductScreenState extends State<AddProductScreen> {
               onChanged: (v) => setState(() => _categoryId = v),
               validator: (v) => v == null ? 'اختر القسم' : null,
             ),
-            // أين يتوفر المنتج: يظهر فقط إذا كان للبائع فروع
-            if (_branches.isNotEmpty) ...[
+            // المنتج: عدد القطع في كل فرع
+            if (!_isService) ...[
+              const SizedBox(height: 20),
+              Text(
+                'عدد القطع في كل فرع',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              if (_branches.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('أضف فرعاً من حسابي لتحديد عدد القطع'),
+                ),
+              for (final b in _branches)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(b['name'] ?? '')),
+                      SizedBox(
+                        width: 110,
+                        child: TextFormField(
+                          controller: _branchQty[b['id']],
+                          decoration: _box('العدد'),
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          validator: (v) => (int.tryParse(v!.trim()) ?? -1) < 0
+                              ? 'عدد غير صحيح'
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+            // الخدمة: أين تتوفر (يظهر فقط إذا كان للبائع فروع)
+            if (_isService && _branches.isNotEmpty) ...[
               const SizedBox(height: 8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

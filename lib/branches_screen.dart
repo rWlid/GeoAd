@@ -4,6 +4,33 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'branch_form_screen.dart';
 import 'branch_status.dart';
 
+// Asks "fixed or mobile?" in a bottom sheet. Returns 'fixed', 'mobile',
+// or null when closed. Used here and in the create-ad screen.
+Future<String?> askBranchType(BuildContext context) {
+  return showModalBottomSheet<String>(
+    context: context,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.storefront),
+            title: const Text('فرع ثابت'),
+            subtitle: const Text('محل في مكان واحد وله أوقات عمل'),
+            onTap: () => Navigator.pop(context, 'fixed'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.local_shipping),
+            title: const Text('فرع متنقل'),
+            subtitle: const Text('عربة أو بائع يتنقل، موقعه من جوال السائق'),
+            onTap: () => Navigator.pop(context, 'mobile'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 // The store owner's branches: tap a card to edit, swipe it to delete.
 class BranchesScreen extends StatefulWidget {
   const BranchesScreen({super.key});
@@ -69,28 +96,7 @@ class _BranchesScreenState extends State<BranchesScreen> {
 
   // Asks fixed or mobile, then opens the form for that kind.
   Future<void> addBranch() async {
-    final type = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.storefront),
-              title: const Text('فرع ثابت'),
-              subtitle: const Text('محل في مكان واحد وله أوقات عمل'),
-              onTap: () => Navigator.pop(context, 'fixed'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.local_shipping),
-              title: const Text('فرع متنقل'),
-              subtitle: const Text('عربة أو بائع يتنقل، موقعه من جوال السائق'),
-              onTap: () => Navigator.pop(context, 'mobile'),
-            ),
-          ],
-        ),
-      ),
-    );
+    final type = await askBranchType(context);
     if (type == null) return;
     openForm(null, type);
   }

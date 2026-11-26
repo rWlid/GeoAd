@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'branch_status.dart';
+import 'otp_screen.dart'; // fakeCode
 import 'pick_location_screen.dart';
 
 // Add or edit a branch.
@@ -136,6 +137,16 @@ class _BranchFormScreenState extends State<BranchFormScreen> {
     setState(() => _showPlaceError = _isFixed && _place == null);
     if (!fieldsOk || _showPlaceError) return;
 
+    // A new driver number is confirmed with the code sent to the driver.
+    final driverPhone = _driverPhone.text.trim();
+    if (!_isFixed && driverPhone != widget.branch?['driver_phone']) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => _DriverCodeDialog(phone: driverPhone),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+
     setState(() => _saving = true);
     try {
       final Map<String, dynamic> data = {
@@ -148,7 +159,7 @@ class _BranchFormScreenState extends State<BranchFormScreen> {
         data['lat'] = _place!.latitude;
         data['lng'] = _place!.longitude;
       } else {
-        data['driver_phone'] = _driverPhone.text.trim();
+        data['driver_phone'] = driverPhone;
       }
 
       var id = widget.branch?['id'];
@@ -345,6 +356,76 @@ class _BranchFormScreenState extends State<BranchFormScreen> {
         ),
       ),
     ];
+  }
+}
+
+// Asks the owner for the code we "sent" to the driver's phone; the owner
+// gets it from the driver. Fake for now: no SMS is sent and the code is
+// always fakeCode. Later: send a real SMS here and check it on the server.
+class _DriverCodeDialog extends StatefulWidget {
+  const _DriverCodeDialog({required this.phone});
+
+  final String phone;
+
+  @override
+  State<_DriverCodeDialog> createState() => _DriverCodeDialogState();
+}
+
+class _DriverCodeDialogState extends State<_DriverCodeDialog> {
+  final _code = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  // Closes with true when the code is right, else shows an error.
+  void checkCode() {
+    if (_code.text.trim() == fakeCode) {
+      Navigator.pop(context, true);
+      return;
+    }
+    setState(() => _error = 'الرمز غير صحيح');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('تأكيد رقم السائق'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'أرسلنا رمز تحقق إلى ${widget.phone}. اطلبه من السائق واكتبه هنا',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _code,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            textAlign: TextAlign.center,
+            maxLength: 4,
+            onSubmitted: (_) => checkCode(),
+            decoration: InputDecoration(
+              labelText: 'الرمز',
+              helperText: 'للتجربة: $fakeCode',
+              errorText: _error,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(onPressed: checkCode, child: const Text('تأكيد')),
+      ],
+    );
   }
 }
 

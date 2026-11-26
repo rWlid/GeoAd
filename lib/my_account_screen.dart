@@ -59,18 +59,21 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
               // Shows only for people who drive a mobile branch.
               DriverCard(phone: phone),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.inventory_2),
-                  title: const Text('منتجاتي'),
-                  trailing: const Icon(Icons.chevron_left),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const MyProductsScreen()),
+              // Products and branches are for store accounts only.
+              if (isBusiness) ...[
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.inventory_2),
+                    title: const Text('منتجاتي'),
+                    trailing: const Icon(Icons.chevron_left),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const MyProductsScreen(),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              if (isBusiness)
                 Card(
                   child: ListTile(
                     leading: const Icon(Icons.storefront),
@@ -81,6 +84,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     ),
                   ),
                 ),
+              ],
               const SizedBox(height: 24),
               TextButton.icon(
                 icon: const Icon(Icons.logout),
