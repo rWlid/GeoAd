@@ -80,15 +80,12 @@ class MapTopBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
               ],
-              // The other side: result (or "nothing here"), then category.
+              // The other side: the result line, then the category.
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    if (adCount > 0)
-                      _Pill(child: Text(resultText()))
-                    else
-                      _Pill(child: nothingHere()),
+                    if (adCount > 0) _Pill(child: Text(resultText())),
                     if (categoryId != null) ...[
                       const SizedBox(height: 8),
                       InputChip(
@@ -105,6 +102,11 @@ class MapTopBar extends StatelessWidget {
               ),
             ],
           ),
+          // No offers: a full-width card under the knob, at most two lines.
+          if (adCount == 0) ...[
+            const SizedBox(height: 8),
+            _Pill(child: nothingHere()),
+          ],
         ],
       ),
     );
@@ -146,35 +148,70 @@ class MapTopBar extends StatelessWidget {
       children: [
         const Icon(Icons.location_off, size: 20),
         const SizedBox(width: 8),
-        const Expanded(child: Text('فعّل الموقع لعرض الإعلانات القريبة')),
+        const Expanded(child: Text('فعّل الموقع لعرض العروض القريبة')),
         TextButton(onPressed: onAskLocation, child: const Text('تفعيل')),
       ],
     );
   }
 
-  // "٤ إعلانات ضمن ٢ كم", or just "٤ إعلانات" without a circle.
+  // "٤ عروض ضمن ٢ كم", or just "٤ عروض" without a circle.
   String resultText() {
-    final count = adsCountText(adCount);
+    final count = countText(adCount, offerWords);
     if (!hasPosition) return count;
     return '$count ضمن ${arabicDigits('$radiusKm')} كم';
   }
 
-  // The friendly card when no ad matches, with quick ways out.
+  // The friendly card when no offer matches, with quick ways out.
   Widget nothingHere() {
+    final canGrow = hasPosition && radiusKm < maxRadiusKm;
+    final hasFilters = filters.count > 0 || filters.search.isNotEmpty;
     return Column(
       children: [
-        const Text('لا توجد إعلانات هنا'),
-        if (hasPosition && radiusKm < maxRadiusKm)
-          TextButton(
-            onPressed: () => onRadius(min(radiusKm * 2, maxRadiusKm)),
-            child: const Text('وسّع المسافة'),
-          ),
-        if (filters.count > 0 || filters.search.isNotEmpty)
-          TextButton(
-            onPressed: onClearFilters,
-            child: const Text('مسح الفلاتر'),
+        Text(canGrow ? 'لا توجد عروض، جرّب توسّع المسافة' : 'لا توجد عروض'),
+        if (canGrow || hasFilters)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (canGrow)
+                TextButton(
+                  onPressed: () => onRadius(min(radiusKm * 2, maxRadiusKm)),
+                  child: const Text('وسّع المسافة'),
+                ),
+              if (hasFilters)
+                TextButton(
+                  onPressed: onClearFilters,
+                  child: const Text('مسح الفلاتر'),
+                ),
+            ],
           ),
       ],
+    );
+  }
+}
+
+// Shown instead of the map when the first load fails: why, and a retry.
+class LoadFailed extends StatelessWidget {
+  const LoadFailed({super.key, required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.cloud_off,
+            size: 72,
+            color: Theme.of(context).colorScheme.outline,
+          ),
+          const SizedBox(height: 12),
+          const Text('تعذّر تحميل العروض، تحقق من الاتصال'),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: onRetry, child: const Text('إعادة المحاولة')),
+        ],
+      ),
     );
   }
 }

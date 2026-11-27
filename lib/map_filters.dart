@@ -1,3 +1,5 @@
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+
 import 'branch_status.dart';
 
 // The price choices in the filter sheet, in ر.س (null = any price).
@@ -42,14 +44,20 @@ class MapFilters {
     if (ad['is_active'] != true) return false;
     if (branchType != null && branch['type'] != branchType) return false;
     if (!matchesSearch(ad, branch)) return false;
-    final productFiltersOff =
-        mainId == null && isService == null && maxPrice == null && !inStockOnly;
     if (productFiltersOff) return true;
-    for (final product in ad['products']) {
-      if (productMatches(product, branch['id'])) return true;
-    }
-    return false;
+    return matchingProducts(ad, branch['id']).isNotEmpty;
   }
+
+  // True when no product filter (category, type, price, stock) is on.
+  bool get productFiltersOff =>
+      mainId == null && isService == null && maxPrice == null && !inStockOnly;
+
+  // The ad's products that pass the product filters at this branch
+  // (all of them when no product filter is on).
+  List matchingProducts(Map ad, int branchId) => [
+    for (final product in ad['products'])
+      if (productFiltersOff || productMatches(product, branchId)) product,
+  ];
 
   // True when the product passes the category, type, price and stock
   // filters at this branch.
@@ -88,6 +96,27 @@ class MapFilters {
     for (final ad in branch['ads'])
       if (passes(ad, branch)) ad,
   ];
+
+  // The branches to put on the map: a mobile one is sharing now, it has
+  // an ad that passes the filters, and (when we know the customer's
+  // position) it is inside the circle of [radiusKm].
+  List<Map<String, dynamic>> branchesToShow(
+    List<Map<String, dynamic>> branches,
+    LatLng? myPosition,
+    int radiusKm,
+  ) {
+    final result = <Map<String, dynamic>>[];
+    for (final branch in branches) {
+      if (branch['type'] != 'fixed' && !isVisibleNow(branch)) continue;
+      if (adsAt(branch).isEmpty) continue;
+      if (myPosition != null) {
+        final meters = metersBetween(myPosition, positionOf(branch));
+        if (meters > radiusKm * 1000) continue;
+      }
+      result.add(branch);
+    }
+    return result;
+  }
 
   // How many different ads these branches show (an ad can be at many).
   int countAds(List<Map<String, dynamic>> branches) {
