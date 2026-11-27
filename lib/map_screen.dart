@@ -9,6 +9,7 @@ import 'branch_status.dart';
 import 'branch_sheet.dart';
 import 'filter_sheet.dart';
 import 'map_filters.dart';
+import 'map_pin.dart';
 import 'map_top_bar.dart';
 import 'my_position.dart';
 
@@ -132,7 +133,7 @@ class _MapScreenState extends State<MapScreen> {
   // Opens the branch's sheet and moves the camera smoothly so the pin sits
   // in the top half of the map, above the sheet.
   Future<void> openBranch(Map<String, dynamic> branch) async {
-    showBranchSheet(context, branch, _filters.adsAt(branch), _myPosition);
+    showBranchSheet(context, branch, _filters, _myPosition);
     final map = _map;
     if (map == null) return;
     final region = await map.getVisibleRegion();
@@ -142,22 +143,9 @@ class _MapScreenState extends State<MapScreen> {
     map.animateCamera(CameraUpdate.newLatLng(target));
   }
 
-  // The branches to show: a mobile one is sharing now, it has an ad that
-  // passes the filters, and (when we know the customer's position) it is
-  // inside the circle.
-  List<Map<String, dynamic>> visibleBranches(MapFilters filters) {
-    final result = <Map<String, dynamic>>[];
-    for (final branch in _branches!) {
-      if (branch['type'] != 'fixed' && !isVisibleNow(branch)) continue;
-      if (filters.adsAt(branch).isEmpty) continue;
-      if (_myPosition != null) {
-        final meters = metersBetween(_myPosition!, positionOf(branch));
-        if (meters > _radiusKm * 1000) continue;
-      }
-      result.add(branch);
-    }
-    return result;
-  }
+  // The branches to put on the map with these filters (see map_filters.dart).
+  List<Map<String, dynamic>> visibleBranches(MapFilters filters) =>
+      filters.branchesToShow(_branches!, _myPosition, _radiusKm);
 
   // Opens the filter sheet; "عرض النتائج" applies what was picked.
   Future<void> openFilters() async {
@@ -175,31 +163,24 @@ class _MapScreenState extends State<MapScreen> {
     setState(() => _filters = picked);
   }
 
+  // Called on every build: draws the pins that are not drawn yet (new
+  // counts after a load or a filter change), then rebuilds to show them.
+  Future<void> drawMissingPins(List<Map<String, dynamic>> branches) async {
+    final colors = Theme.of(context).colorScheme;
+    final drewAny = await preparePins(branches, _filters, colors);
+    if (!mounted || !drewAny) return;
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_branches == null && _loadFailed) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.cloud_off,
-              size: 72,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-            const SizedBox(height: 12),
-            const Text('تعذّر تحميل الإعلانات، تحقق من الاتصال'),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: retry, child: const Text('إعادة المحاولة')),
-          ],
-        ),
-      );
-    }
+    if (_branches == null && _loadFailed) return LoadFailed(onRetry: retry);
     if (_branches == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
     final branches = visibleBranches(_filters);
+    drawMissingPins(branches);
     return Scaffold(
       body: Stack(
         children: [
@@ -217,7 +198,11 @@ class _MapScreenState extends State<MapScreen> {
             myLocationButtonEnabled: false, // we have our own "موقعي"
             markers: {
               for (final branch in branches)
-                branchPin(branch, () => openBranch(branch)),
+                branchPin(
+                  branch,
+                  readyPin(branch, _filters),
+                  () => openBranch(branch),
+                ),
             },
             circles: {
               if (_myPosition != null)

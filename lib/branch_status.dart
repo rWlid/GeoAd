@@ -125,17 +125,22 @@ LatLngBounds boundsAround(LatLng center, int km) {
   );
 }
 
-// A branch's pin. Fixed and mobile have different colors; a closed fixed
-// branch is faded. The markerId is the branch id, so on every reload a
-// moving branch's pin is updated in place.
-Marker branchPin(Map branch, VoidCallback onTap) {
+// A branch's pin: our drawn [icon] (see map_pin.dart), or Google's default
+// pin while the icon is not drawn yet. A closed fixed branch is faded.
+// The markerId is the branch id, so on every reload a moving branch's pin
+// is updated in place.
+Marker branchPin(Map branch, BitmapDescriptor? icon, VoidCallback onTap) {
   final isFixed = branch['type'] == 'fixed';
   return Marker(
     markerId: MarkerId('${branch['id']}'),
     position: positionOf(branch),
-    icon: BitmapDescriptor.defaultMarkerWithHue(
-      isFixed ? BitmapDescriptor.hueAzure : BitmapDescriptor.hueOrange,
-    ),
+    icon:
+        icon ??
+        BitmapDescriptor.defaultMarkerWithHue(
+          isFixed ? BitmapDescriptor.hueAzure : BitmapDescriptor.hueOrange,
+        ),
+    // Our round pin sits on its center; Google's pin on its tip.
+    anchor: icon == null ? const Offset(0.5, 1) : const Offset(0.5, 0.5),
     alpha: isFixed && !isOpenNow(branch['branch_hours']) ? 0.5 : 1,
     onTap: onTap,
   );
@@ -154,13 +159,17 @@ Circle rangeCircle(LatLng center, int km, ThemeData theme) {
   );
 }
 
-// The ad count with the right Arabic word: "إعلان واحد"، "إعلانان"،
-// "٤ إعلانات" (3 to 10), "١٢ إعلان" (11 and up).
-String adsCountText(int count) {
-  if (count == 1) return 'إعلان واحد';
-  if (count == 2) return 'إعلانان';
-  if (count <= 10) return '${arabicDigits('$count')} إعلانات';
-  return '${arabicDigits('$count')} إعلان';
+// The words for counting offers, used by countText.
+const offerWords = ['عرض واحد', 'عرضان', 'عروض', 'عرضًا'];
+
+// A count with the right Arabic word. [words] are the forms for 1, 2,
+// 3 to 10, and 11 and up, e.g. offerWords gives "عرض واحد"، "عرضان"،
+// "٤ عروض"، "١٢ عرضًا".
+String countText(int count, List<String> words) {
+  if (count == 1) return words[0];
+  if (count == 2) return words[1];
+  if (count <= 10) return '${arabicDigits('$count')} ${words[2]}';
+  return '${arabicDigits('$count')} ${words[3]}';
 }
 
 // True when this branch has the product now, the same rule as the

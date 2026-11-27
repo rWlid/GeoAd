@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'ad_details_screen.dart';
+import 'ad_row.dart';
 import 'branch_status.dart';
+import 'map_filters.dart';
+import 'store_screen.dart';
 
-// Opens a branch's sheet at half height; drag it up to see more.
-// [ads] are the branch's ads that pass the map's filters.
+// Opens a branch's quick-look sheet at 45% height; drag it up to 90%.
+// [filters] are the map's filters, to pick the matching offers.
 void showBranchSheet(
   BuildContext context,
   Map branch,
-  List ads,
+  MapFilters filters,
   LatLng? myPosition,
 ) {
   showModalBottomSheet(
@@ -18,11 +21,11 @@ void showBranchSheet(
     showDragHandle: true,
     builder: (_) => DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.5,
+      initialChildSize: 0.45,
       maxChildSize: 0.9,
       builder: (_, scroll) => BranchSheet(
         branch: branch,
-        ads: ads,
+        filters: filters,
         myPosition: myPosition,
         scroll: scroll,
       ),
@@ -30,43 +33,133 @@ void showBranchSheet(
   );
 }
 
-// The sheet for one branch: the store, then its ads with their products
-// and this branch's stock, then the opening hours (folded).
-class BranchSheet extends StatelessWidget {
+// The quick look at one branch: the store, "زيارة المتجر", then the
+// matching offers, and on demand the store's other offers.
+class BranchSheet extends StatefulWidget {
   const BranchSheet({
     super.key,
     required this.branch,
-    required this.ads,
+    required this.filters,
     required this.myPosition,
     required this.scroll,
   });
 
   final Map branch;
-  final List ads;
+  final MapFilters filters;
   final LatLng? myPosition; // null = location off, so no distance
   final ScrollController scroll; // lets the list drag the sheet
+
+  @override
+  State<BranchSheet> createState() => _BranchSheetState();
+}
+
+class _BranchSheetState extends State<BranchSheet> {
+  bool _showAll = false; // true after "عرض كل عروض المتجر"
+
+  // The active offers at this branch that the filters hide.
+  List hiddenAds(List matchingAds) => [
+    for (final ad in widget.branch['ads'])
+      if (ad['is_active'] == true && !matchingAds.contains(ad)) ad,
+  ];
+
+  // Opens the store page on top of the sheet; back returns here.
+  void openStore() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            StoreScreen(branch: widget.branch, myPosition: widget.myPosition),
+      ),
+    );
+  }
+
+  // Opens the offer details page on top of the sheet; back returns here.
+  void openAd(Map ad) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdDetailsScreen(ad: ad, branch: widget.branch),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final matchingAds = widget.filters.adsAt(widget.branch);
+    final hidden = hiddenAds(matchingAds);
+    final total = matchingAds.length + hidden.length;
+    return ListView(
+      controller: widget.scroll,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      children: [
+        BranchHeader(branch: widget.branch, myPosition: widget.myPosition),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: openStore,
+          icon: const Icon(Icons.storefront),
+          label: const Text('زيارة المتجر'),
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'العروض (${arabicDigits('${matchingAds.length}')})',
+          style: theme.textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        // Each row sums up only the products that match the filters.
+        for (final ad in matchingAds)
+          AdRow(
+            ad: ad,
+            products: widget.filters.matchingProducts(ad, widget.branch['id']),
+            onTap: () => openAd(ad),
+          ),
+        if (hidden.isNotEmpty && !_showAll)
+          TextButton(
+            onPressed: () => setState(() => _showAll = true),
+            child: Text('عرض كل عروض المتجر (${arabicDigits('$total')})'),
+          ),
+        if (_showAll) ...[
+          const Divider(height: 32),
+          Text('عروض أخرى في المتجر', style: theme.textTheme.titleSmall),
+          const SizedBox(height: 8),
+          for (final ad in hidden)
+            AdRow(ad: ad, products: ad['products'], onTap: () => openAd(ad)),
+        ],
+      ],
+    );
+  }
+}
+
+// The top of the sheet and of the store page: logo, store name, branch
+// name, then one line of facts: type · open or last update · distance.
+class BranchHeader extends StatelessWidget {
+  const BranchHeader({
+    super.key,
+    required this.branch,
+    required this.myPosition,
+  });
+
+  final Map branch;
+  final LatLng? myPosition;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isFixed = branch['type'] == 'fixed';
     final store = branch['stores'] as Map?;
-    final address = branch['address'] as String?;
-
-    return ListView(
-      controller: scroll,
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+    final logo = store?['business_logo'] as String?;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             CircleAvatar(
               radius: 24,
-              backgroundImage: store?['business_logo'] == null
+              backgroundImage: logo == null
                   ? null
-                  : NetworkImage(imageUrl(store!['business_logo'])),
-              child: store?['business_logo'] == null
-                  ? const Icon(Icons.storefront)
-                  : null,
+                  : NetworkImage(imageUrl(logo)),
+              child: logo == null ? const Icon(Icons.storefront) : null,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -103,22 +196,6 @@ class BranchSheet extends StatelessWidget {
             if (myPosition != null) Text(distanceText()),
           ],
         ),
-        if (address != null && address.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(address),
-        ],
-        const SizedBox(height: 24),
-        Text('الإعلانات', style: theme.textTheme.titleMedium),
-        for (final ad in ads) _AdCard(ad: ad, branchId: branch['id']),
-        if (isFixed)
-          ExpansionTile(
-            title: const Text('أوقات العمل'),
-            tilePadding: EdgeInsets.zero,
-            childrenPadding: EdgeInsets.zero,
-            children: [
-              for (var day = 0; day < 7; day++) hoursLine(context, day),
-            ],
-          ),
       ],
     );
   }
@@ -148,98 +225,4 @@ class BranchSheet extends StatelessWidget {
     final number = arabicDigits(km.toStringAsFixed(1)).replaceAll('.', '٫');
     return 'على بعد $number كم';
   }
-
-  // One day's line: "الأحد      ١٠:٠٠ ص – ١١:٠٠ م" or "مغلق".
-  Widget hoursLine(BuildContext context, int day) {
-    final hours = branch['branch_hours'] as List;
-    final rows = [
-      for (final row in hours)
-        if (row['day_of_week'] == day) row,
-    ];
-    final String text;
-    if (rows.isEmpty) {
-      text = 'مغلق';
-    } else {
-      final opens = parseTime(rows.first['opens_at']).format(context);
-      final closes = parseTime(rows.first['closes_at']).format(context);
-      text = arabicDigits('$opens – $closes'); // "١٠:٠٠ ص – ١١:٠٠ م"
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          SizedBox(width: 96, child: Text(dayNames[day])),
-          Text(text),
-        ],
-      ),
-    );
-  }
-}
-
-// One ad: title, description, then its products with price and whether
-// this branch has them in stock.
-class _AdCard extends StatelessWidget {
-  const _AdCard({required this.ad, required this.branchId});
-
-  final Map ad;
-  final int branchId;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(top: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(ad['title'], style: theme.textTheme.titleMedium),
-            if (ad['description'] != null) ...[
-              const SizedBox(height: 4),
-              Text(ad['description']),
-            ],
-            for (final product in ad['products'])
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: product['image_path'] == null
-                      ? const SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: Icon(Icons.inventory_2_outlined),
-                        )
-                      : Image.network(
-                          imageUrl(product['image_path']),
-                          width: 48,
-                          height: 48,
-                          fit: BoxFit.cover,
-                        ),
-                ),
-                title: Text(product['name']),
-                subtitle: Text('${priceText(product['price'])} ر.س'),
-                trailing: StatusLabel(
-                  isActive: inStockAt(product, branchId),
-                  text: inStockAt(product, branchId) ? 'متوفر' : 'غير متوفر',
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 45.0 → "٤٥", 12.5 → "١٢٫٥".
-  String priceText(num price) {
-    final text = price == price.roundToDouble()
-        ? '${price.toInt()}'
-        : price.toStringAsFixed(2);
-    return arabicDigits(text).replaceAll('.', '٫');
-  }
-}
-
-// The public web address of a photo in the "images" storage bucket.
-String imageUrl(String path) {
-  return Supabase.instance.client.storage.from('images').getPublicUrl(path);
 }
